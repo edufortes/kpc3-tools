@@ -1,0 +1,7 @@
+__pycache__/
+*.pyc
+
+# Backups contain station position and personal settings
+backups/
+backup-*.txt
+kantronics-*.txt
