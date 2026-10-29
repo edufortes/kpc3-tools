@@ -4,7 +4,7 @@ Command-line tools to factory-reset, configure, back up and restore a
 **Kantronics KPC-3 Plus** TNC over its serial port. Tested against firmware **8.3**.
 
 - `kpc3.py`: factory reset plus a ready-made setup: APRS fill-in digipeater (with
-  or without beacon), KISS TNC, or PBBS.
+  or without beacon), plain packet digipeater, KISS TNC, or PBBS.
 - `kpcbackup.py`: save the full TNC configuration to a text file and restore it later.
 
 > **Warning:** every setup mode of `kpc3.py` and every `kpcbackup.py restore` starts
@@ -27,6 +27,7 @@ kpc3.py MODE CALLSIGN PORT [options]
 |---|---|
 | `fillin` | WIDE1-1 fill-in digipeater, no beacon |
 | `fillin-beacon` | WIDE1-1 fill-in digipeater plus an APRS position beacon |
+| `digi` | Plain AX.25 packet digipeater (e.g. to reach a Winlink gateway), no APRS, no beacon |
 | `kiss` | KISS mode, for Dire Wolf, APRX, `kissattach`, Xastir, etc. |
 | `pbbs` | Personal mailbox (PBBS) |
 | `show` | Print the current configuration (`DISPLAY`), changes nothing |
@@ -37,6 +38,7 @@ Examples:
 ./kpc3.py fillin        N0CALL-10 /dev/ttyUSB0
 ./kpc3.py fillin-beacon N0CALL-10 /dev/ttyUSB0 --lat 50.1000 --lon 8.6800 \
     --comment "WIDE1-1 Fill-in Digi" --interval 30
+./kpc3.py digi          N0CALL-10 /dev/ttyUSB0 --alias RELAY
 ./kpc3.py kiss          N0CALL-10 /dev/ttyUSB0
 ./kpc3.py pbbs          N0CALL-10 /dev/ttyUSB0 --pbbs-call N0CALL-1
 ./kpc3.py show          -         /dev/ttyUSB0
@@ -65,6 +67,7 @@ What a setup run does:
 | `--no-restore` | | Skip the factory reset and apply the settings on top |
 | `--dry-run` | | Only print the commands |
 | `--dwait MS` | 0 | Fill-in modes: delay before repeating, 0 to 2550 ms |
+| `--alias` | none | `digi`: `MYALIAS`, a second name stations can digipeat through |
 | `--lat`, `--lon` | | Beacon position, decimal degrees (south/west negative) |
 | `--comment` | `WIDE1-1 Fill-in Digi` | Beacon comment |
 | `--symbol` | `/#` | APRS table + symbol, e.g. `1#` for the fill-in overlay |
@@ -87,6 +90,23 @@ PBBS 0                the factory default enables a 100 KB PBBS
 CD SOFTWARE           (--cd)
 MONITOR ON, MRPT ON
 ```
+
+### Plain digipeater settings (`digi`)
+
+```
+DIGIPEAT ON           repeat any frame whose next unused hop is MYCALL or MYALIAS
+MYALIAS               (--alias, cleared if not given)
+UIDIGI OFF            no APRS WIDE1-1 digipeating
+HID OFF               no ID packets
+BEACON EVERY 0        no beacon
+PBBS 0
+CD SOFTWARE           (--cd)
+MONITOR ON, MRPT ON
+```
+
+This also repeats connected-mode frames, so a Winlink client can reach a gateway
+through it: in the client, connect to the gateway's callsign with `N0CALL-10`
+(or the alias) as the digipeater path.
 
 The beacon uses the location-text beacon (`LT 1` / `LTP 1` / `BLT 1`), not
 `BTEXT`. `BTEXT` beacons are always sent to the destination `BEACON`, while `LTP`

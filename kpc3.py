@@ -5,6 +5,7 @@ Usage examples:
   kpc3.py fillin        N0CALL-11 /dev/ttyUSB1
   kpc3.py fillin-beacon N0CALL-11 /dev/ttyUSB1 --lat 50.1000 --lon 8.6800 --comment "WIDE1-1 Fill-in Digi" --interval 10
   kpc3.py fillin-beacon N0CALL-10 /dev/ttyUSB1 --lat 50.1000 --lon 8.6800 --interval 15 --beacon-only
+  kpc3.py digi          N0CALL-11 /dev/ttyUSB1 --alias RELAY
   kpc3.py kiss          N0CALL-11 /dev/ttyUSB1
   kpc3.py pbbs          N0CALL-11 /dev/ttyUSB1 --pbbs-call N0CALL-1
   kpc3.py show          -         /dev/ttyUSB1
@@ -225,6 +226,21 @@ def fillin_settings(args):
     ]
 
 
+def digi_settings(args):
+    # Plain AX.25 digipeater, no APRS: repeats any frame (also connected mode,
+    # e.g. Winlink) whose next unused hop is MYCALL or MYALIAS
+    return [
+        "DIGIPEAT ON",
+        f"MYALIAS {args.alias or '%'}",
+        "UIDIGI OFF",
+        "HID OFF",
+        "BEACON EVERY 0",
+        "MONITOR ON",
+        "MRPT ON",
+        "PBBS 0",
+    ]
+
+
 def beacon_settings(args):
     # LT/LTP/BLT location beacon: unlike BTEXT (always sent to BEACON), LTP sets
     # the APRS destination and via path. Works without a GPS attached.
@@ -297,6 +313,7 @@ def run(args):
     mode_cmds = {
         "fillin": fillin_settings,
         "fillin-beacon": lambda a: [c for c in fillin_settings(a) if not c.startswith("BEACON")] + beacon_settings(a),
+        "digi": digi_settings,
         "kiss": lambda a: [],
         "pbbs": pbbs_settings,
     }[args.mode](args)
@@ -331,7 +348,7 @@ def run(args):
     print("\n--- resulting configuration (selected) ---")
     tnc.verbose = False
     out = tnc.cmd("DISPLAY", timeout=40)
-    keys = ("MYCALL", "MYPBBS", "INTFACE", "ABAUD", "DIGIPEAT", "UIDIGI", "UIDWAIT",
+    keys = ("MYCALL", "MYALIAS", "MYPBBS", "INTFACE", "ABAUD", "DIGIPEAT", "UIDIGI", "UIDWAIT",
             "UIFLOOD", "UITRACE", "HID", "DWAIT", "CD ", "BEACON", "BTEXT", "UNPROTO", "PBBS ", "PTEXT", "TXDELAY")
     beacon = ("LT ", "LTP ", "BLT ")
     current = None
@@ -347,7 +364,7 @@ def run(args):
 
 def main():
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    p.add_argument("mode", choices=["fillin", "fillin-beacon", "kiss", "pbbs", "show"])
+    p.add_argument("mode", choices=["fillin", "fillin-beacon", "digi", "kiss", "pbbs", "show"])
     p.add_argument("call", help="callsign (MYCALL), e.g. N0CALL-11 ('-' for show)")
     p.add_argument("port", help="serial port, e.g. /dev/ttyUSB1")
     p.add_argument("--baud", type=int, default=9600, choices=BAUDS, help="host serial baud (default 9600)")
@@ -358,9 +375,10 @@ def main():
     p.add_argument("--dry-run", action="store_true", help="only print the commands")
     p.add_argument("--beacon-only", action="store_true",
                    help="fillin-beacon: only update the beacon (no reset, digi settings untouched)")
-    d = p.add_argument_group("digipeater (fillin, fillin-beacon)")
+    d = p.add_argument_group("digipeater")
     d.add_argument("--dwait", type=dwait_ms, default=0, metavar="MS",
-                   help="delay before repeating, 0-2550 ms in 10 ms steps (default 0)")
+                   help="fillin modes: delay before repeating, 0-2550 ms in 10 ms steps (default 0)")
+    d.add_argument("--alias", type=check_call, help="digi: MYALIAS, a second digipeat name (default none)")
     b = p.add_argument_group("beacon (fillin-beacon)")
     b.add_argument("--lat", type=float, help="latitude, decimal degrees (south negative)")
     b.add_argument("--lon", type=float, help="longitude, decimal degrees (west negative)")
