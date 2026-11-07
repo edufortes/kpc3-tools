@@ -2,8 +2,8 @@
 """Back up and restore the configuration of a Kantronics TNC.
 
 Usage:
-  kpcbackup.py backup  /dev/ttyUSB1 [--dir backups]
-  kpcbackup.py restore /dev/ttyUSB1 backups/kantronics-KPC3P-8.3-2026-10-28.txt
+  kpc3-backup.py backup  /dev/ttyUSB1 [--dir backups]
+  kpc3-backup.py restore /dev/ttyUSB1 backups/kantronics-KPC3P-8.3-2026-10-28.txt
 
 backup:  soft RESET to read model and firmware from the banner, then save the
          DISPLAY output to kantronics-<MODEL>-<VER>-<YYYY-MM-DD>.txt
@@ -19,7 +19,7 @@ import time
 
 import serial
 
-from kpc3 import BAUDS, TNC, TNCError, set_clock
+from kpc3lib import BAUDS, TNC, TNCError, set_clock
 
 BANNER_RE = re.compile(r"KANTRONICS\s+(\S+)\s+VERSION\s+(\S+)")
 # Parameters whose value is free text: taken verbatim, never trimmed

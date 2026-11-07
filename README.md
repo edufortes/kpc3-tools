@@ -3,12 +3,13 @@
 Command-line tools to factory-reset, configure, back up, restore and set the clock of a
 **Kantronics KPC-3 Plus** TNC over its serial port. Tested against firmware **8.3**.
 
-- `kpc3.py`: factory reset plus a ready-made setup: APRS fill-in digipeater (with
+- `kpc3-setup.py`: factory reset plus a ready-made setup: APRS fill-in digipeater (with
   or without beacon), plain packet digipeater, KISS TNC, or PBBS.
-- `kpcbackup.py`: save the full TNC configuration to a text file and restore it later.
-- `kpcclock.py`: show the TNC clock or set it from the host clock (NTP).
+- `kpc3-backup.py`: save the full TNC configuration to a text file and restore it later.
+- `kpc3-clock.py`: show the TNC clock or set it from the host clock (NTP).
+- `kpc3lib.py`: shared serial code used by the three tools; keep it in the same folder.
 
-> **Warning:** every setup mode of `kpc3.py` and every `kpcbackup.py restore` starts
+> **Warning:** every setup mode of `kpc3-setup.py` and every `kpc3-backup.py restore` starts
 > with `RESTORE DEFAULT`, which wipes the TNC's current configuration (and PBBS
 > messages). Take a backup first.
 
@@ -18,10 +19,10 @@ Command-line tools to factory-reset, configure, back up, restore and set the clo
 - [pyserial](https://pypi.org/project/pyserial/): `pip install -r requirements.txt`
 - Read/write access to the serial port (on Linux usually the `uucp` or `dialout` group)
 
-## kpc3.py: setup modes
+## kpc3-setup.py: setup modes
 
 ```
-kpc3.py MODE CALLSIGN PORT [options]
+kpc3-setup.py MODE CALLSIGN PORT [options]
 ```
 
 | Mode | What it sets up |
@@ -36,16 +37,16 @@ kpc3.py MODE CALLSIGN PORT [options]
 Examples:
 
 ```sh
-./kpc3.py fillin        N0CALL-10 /dev/ttyUSB0
-./kpc3.py fillin-beacon N0CALL-10 /dev/ttyUSB0 --lat 50.1000 --lon 8.6800 \
+./kpc3-setup.py fillin        N0CALL-10 /dev/ttyUSB0
+./kpc3-setup.py fillin-beacon N0CALL-10 /dev/ttyUSB0 --lat 50.1000 --lon 8.6800 \
     --comment "WIDE1-1 Fill-in Digi" --interval 30
-./kpc3.py digi          N0CALL-10 /dev/ttyUSB0 --alias RELAY
-./kpc3.py kiss          N0CALL-10 /dev/ttyUSB0
-./kpc3.py pbbs          N0CALL-10 /dev/ttyUSB0 --pbbs-call N0CALL-1
-./kpc3.py show          -         /dev/ttyUSB0
+./kpc3-setup.py digi          N0CALL-10 /dev/ttyUSB0 --alias RELAY
+./kpc3-setup.py kiss          N0CALL-10 /dev/ttyUSB0
+./kpc3-setup.py pbbs          N0CALL-10 /dev/ttyUSB0 --pbbs-call N0CALL-1
+./kpc3-setup.py show          -         /dev/ttyUSB0
 
 # Change only the beacon of a running digi (no reset)
-./kpc3.py fillin-beacon N0CALL-10 /dev/ttyUSB0 --lat 50.1000 --lon 8.6800 \
+./kpc3-setup.py fillin-beacon N0CALL-10 /dev/ttyUSB0 --lat 50.1000 --lon 8.6800 \
     --interval 15 --beacon-only
 ```
 
@@ -114,11 +115,11 @@ The beacon uses the location-text beacon (`LT 1` / `LTP 1` / `BLT 1`), not
 lets you set the proper APRS destination and path, e.g.
 `N0CALL-10>APN383,WIDE2-1`. It works without a GPS connected.
 
-## kpcbackup.py: backup and restore
+## kpc3-backup.py: backup and restore
 
 ```sh
-./kpcbackup.py backup  /dev/ttyUSB0 [--dir backups]
-./kpcbackup.py restore /dev/ttyUSB0 backups/kantronics-KPC3P-8.3-2026-10-28.txt [--dry-run] [--force]
+./kpc3-backup.py backup  /dev/ttyUSB0 [--dir backups]
+./kpc3-backup.py restore /dev/ttyUSB0 backups/kantronics-KPC3P-8.3-2026-10-28.txt [--dry-run] [--force]
 ```
 
 - **backup** does a soft `RESET` to read model and firmware version from the
@@ -134,12 +135,12 @@ lets you set the proper APRS destination and path, e.g.
 A backup followed by a restore and a second backup gives an identical file
 (except the clock).
 
-## kpcclock.py: TNC clock
+## kpc3-clock.py: TNC clock
 
 ```sh
-./kpcclock.py show /dev/ttyUSB0          # TNC clock, host clock and the offset
-./kpcclock.py set  /dev/ttyUSB0          # set to host local time
-./kpcclock.py set  /dev/ttyUSB0 --utc    # set to UTC
+./kpc3-clock.py show /dev/ttyUSB0          # TNC clock, host clock and the offset
+./kpc3-clock.py set  /dev/ttyUSB0          # set to host local time
+./kpc3-clock.py set  /dev/ttyUSB0 --utc    # set to UTC
 ```
 
 - **set** checks that the host clock is NTP-synchronized (`timedatectl`), refuses
@@ -151,7 +152,7 @@ A backup followed by a restore and a second backup gives an identical file
 - Without the optional RTC chip the clock restarts on every power-up. With the
   RTC installed it keeps running, so one `set` is enough (plus an occasional
   check with `show` for drift).
-- `kpc3.py` and `kpcbackup.py restore` also set the clock (host local time).
+- `kpc3-setup.py` and `kpc3-backup.py restore` also set the clock (host local time).
 - Options: `--baud` (baud to try first), `--force`, `--dry-run`.
 
 ## Firmware 8.3 quirks

@@ -2,9 +2,9 @@
 """Read or set the clock of a Kantronics KPC-3 Plus from the host clock.
 
 Usage:
-  kpcclock.py show /dev/ttyUSB0          compare the TNC clock with the host
-  kpcclock.py set  /dev/ttyUSB0          set the TNC to host local time
-  kpcclock.py set  /dev/ttyUSB0 --utc    set the TNC to UTC
+  kpc3-clock.py show /dev/ttyUSB0          compare the TNC clock with the host
+  kpc3-clock.py set  /dev/ttyUSB0          set the TNC to host local time
+  kpc3-clock.py set  /dev/ttyUSB0 --utc    set the TNC to UTC
 
 The TNC has no time zone: it stores whatever wall-clock time it is given.
 Local time must be set again after a DST change; UTC never does.
@@ -19,7 +19,7 @@ import time
 
 import serial
 
-from kpc3 import BAUDS, TNC, TNCError, send_clock
+from kpc3lib import BAUDS, TNC, TNCError, send_clock
 
 # Default DAYSTR is mm/dd/yyyy hh:mm:ss
 DAYTIME_RE = re.compile(r"(\d{2})/(\d{2})/(\d{4}) (\d{2}):(\d{2}):(\d{2})")
