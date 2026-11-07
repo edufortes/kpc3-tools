@@ -274,10 +274,21 @@ def pbbs_settings(args):
     return cmds
 
 
-def set_clock(tnc):
-    # DAYTIME takes yymmddhhmm[ss]; not fatal if the firmware disagrees
+def send_clock(tnc, utc=False):
+    """Send DAYTIME yymmddhhmmss right at a second boundary, so the TNC clock
+    starts in step with the host. Returns the time that was sent."""
+    now = time.time()
+    target = int(now) + 1 if now % 1 < 0.8 else int(now) + 2
+    time.sleep(max(0.0, target - time.time()))
+    stamp = time.gmtime(target) if utc else time.localtime(target)
+    tnc.cmd("DAYTIME " + time.strftime("%y%m%d%H%M%S", stamp))
+    return stamp
+
+
+def set_clock(tnc, utc=False):
+    # Not fatal during setup if the firmware disagrees
     try:
-        tnc.cmd("DAYTIME " + time.strftime("%y%m%d%H%M%S"))
+        send_clock(tnc, utc)
     except TNCError as e:
         tnc.log(f"warning: could not set clock ({e})")
 

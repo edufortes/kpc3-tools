@@ -1,11 +1,12 @@
 # kpc3-tools
 
-Command-line tools to factory-reset, configure, back up and restore a
+Command-line tools to factory-reset, configure, back up, restore and set the clock of a
 **Kantronics KPC-3 Plus** TNC over its serial port. Tested against firmware **8.3**.
 
 - `kpc3.py`: factory reset plus a ready-made setup: APRS fill-in digipeater (with
   or without beacon), plain packet digipeater, KISS TNC, or PBBS.
 - `kpcbackup.py`: save the full TNC configuration to a text file and restore it later.
+- `kpcclock.py`: show the TNC clock or set it from the host clock (NTP).
 
 > **Warning:** every setup mode of `kpc3.py` and every `kpcbackup.py restore` starts
 > with `RESTORE DEFAULT`, which wipes the TNC's current configuration (and PBBS
@@ -133,6 +134,26 @@ lets you set the proper APRS destination and path, e.g.
 A backup followed by a restore and a second backup gives an identical file
 (except the clock).
 
+## kpcclock.py: TNC clock
+
+```sh
+./kpcclock.py show /dev/ttyUSB0          # TNC clock, host clock and the offset
+./kpcclock.py set  /dev/ttyUSB0          # set to host local time
+./kpcclock.py set  /dev/ttyUSB0 --utc    # set to UTC
+```
+
+- **set** checks that the host clock is NTP-synchronized (`timedatectl`), refuses
+  otherwise unless `--force`, then sends `DAYTIME yymmddhhmmss` exactly at a
+  second boundary and reads the clock back to verify it.
+- Changes nothing else on the TNC, no reset.
+- The TNC has no time zone. With local time, run `set` again after each DST
+  change; `--utc` avoids that.
+- Without the optional RTC chip the clock restarts on every power-up. With the
+  RTC installed it keeps running, so one `set` is enough (plus an occasional
+  check with `show` for drift).
+- `kpc3.py` and `kpcbackup.py restore` also set the clock (host local time).
+- Options: `--baud` (baud to try first), `--force`, `--dry-run`.
+
 ## Firmware 8.3 quirks
 
 Things found while writing these tools, useful when configuring a KPC-3+ by hand:
@@ -153,6 +174,8 @@ Things found while writing these tools, useful when configuring a KPC-3+ by hand
 - `CTRL A OFF B OFF` is ignored; send `CTRL A OFF` and `CTRL B OFF` separately.
 - Changing `PBBS` or `MYREMOTE` reboots the TNC (the banner is printed).
 - To leave KISS mode send the bytes `C0 FF C0`.
+- `DAYTIME yymmddhhmm[ss]` sets the clock; `DAYTIME` alone reads it in the
+  `DAYSTR` format. A fresh RTC reads `01/00/2000 00:00:00`.
 - Errors come as `EH?`, `?...`, `Input ignored`, `Value out of range` or
   `Command not available in NEWUSER mode`.
 
