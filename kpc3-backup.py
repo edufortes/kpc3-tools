@@ -9,6 +9,11 @@ backup:  soft RESET to read model and firmware from the banner, then save the
          DISPLAY output to kantronics-<MODEL>-<VER>-<YYYY-MM-DD>.txt
 restore: RESTORE DEFAULT, then replay every setting from the file. ABAUD,
          INTFACE and XMITOK are applied last. Rejected lines are reported.
+         Settings the TNC firmware does not have (e.g. UIDUPE from a 9.1 backup
+         on an 8.3 TNC) are skipped and listed.
+
+Restoring onto a different firmware needs --force. Raw DISPLAY captures (from a
+terminal program, without the "# MODEL" header) can be restored the same way.
 """
 
 import argparse
@@ -19,24 +24,17 @@ import time
 
 import serial
 
-from kpc3lib import BAUDS, TNC, TNCError, set_clock
+from kpc3lib import (BAUDS, KNOWN_PARAMS, TEXT, TNC, Firmware, TNCError, display_params,
+                     mask, norm, parse, parse_banner, set_clock)
 
-BANNER_RE = re.compile(r"KANTRONICS\s+(\S+)\s+VERSION\s+(\S+)")
-# Parameters whose value is free text: taken verbatim, never trimmed
-TEXT = {"BTEXT", "CTEXT", "HTEXT", "NTEXT", "PTEXT", "RTEXT", "CWIDTEXT", "GPSINIT", "DAYSTR"}
-# Parameters shown as numbered sub-lines (1..4)
-MULTI = {"BLT", "GPSHEAD", "LT", "LTP"}
-# Read-only, or handled separately
-SKIP = {"DAYTIME"}
 LAST = ("XMITOK", "ABAUD", "INTFACE")
 
 
 def read_banner(tnc):
-    banner = tnc.reset()
-    m = BANNER_RE.search(banner)
-    if not m:
-        raise TNCError(f"could not read firmware version from banner: {banner!r}")
-    return m.group(1), m.group(2)
+    model, version = parse_banner(tnc.reset())
+    if not model:
+        raise TNCError("could not read firmware version from the RESET banner")
+    return model, version
 
 
 def backup(args):
@@ -48,6 +46,9 @@ def backup(args):
     display = tnc.cmd("DISPLAY", timeout=40)
     if "MYCALL" not in display:
         raise TNCError("DISPLAY output looks incomplete")
+    if "INTFACE  NEWUSER" in display:
+        print("warning: TNC is in NEWUSER mode, DISPLAY lists only a few settings; "
+              "set INTFACE TERMINAL and RESET for a full backup")
 
     os.makedirs(args.dir, exist_ok=True)
     stem = os.path.join(args.dir, f"kantronics-{model}-{version}-{time.strftime('%Y-%m-%d')}")
@@ -58,29 +59,6 @@ def backup(args):
         f.write(f"# MODEL {model}\n# VERSION {version}\n# DATE {time.strftime('%Y-%m-%d %H:%M:%S')}\n")
         f.write(display.rstrip() + "\n")
     print(f"saved {path}")
-
-
-def parse(text):
-    """Turn DISPLAY output into (meta, {key: raw value}); sub-lines get keys like 'LT 1'."""
-    meta, settings, current = {}, {}, None
-    for line in text.splitlines():
-        if line.startswith("# "):
-            key, _, val = line[2:].partition(" ")
-            meta[key] = val
-            continue
-        if not line.strip():
-            continue
-        m = re.match(r"^([1-4])(?: (.*))?$", line)
-        if current in MULTI and m:
-            settings[f"{current} {m.group(1)}"] = m.group(2) or ""
-            continue
-        name = line[:9].strip()
-        if not re.match(r"^[0-9A-Z]{2,8}$", name):
-            continue  # e.g. "A Link state is: ..."
-        current = name
-        if name not in MULTI and name not in SKIP:
-            settings[name] = line[9:]
-    return meta, settings
 
 
 def commands_for(key, raw):
@@ -102,8 +80,8 @@ def commands_for(key, raw):
         # Set the numbers with a placeholder alias, then disable the alias
         return [f"{name} NONE,{val.split(',', 1)[1]}", f"{name} %"]
     if val == "disabled":
-        return [f"{name} %"]
-    return [f"{name} {val}".rstrip()]
+        return [f"{key} %"]
+    return [f"{key} {val}".rstrip()]
 
 
 def restore(args):
@@ -116,10 +94,16 @@ def restore(args):
     if baud not in BAUDS:
         raise TNCError(f"unsupported ABAUD {baud} in backup")
 
+    source = f"{meta['MODEL']} {meta['VERSION']}" if "VERSION" in meta else None
+
     if args.dry_run:
+        fw = Firmware.offline(args.firmware) if args.firmware else Firmware("?", "?", None)
         for key, raw in wanted.items():
+            if not fw.supports(key):
+                print(f"# {key}: skipped, not in firmware {fw.version}")
+                continue
             try:
-                print("\n".join(commands_for(key, raw)))
+                print("\n".join(mask(c) for c in commands_for(key, raw)))
             except TNCError as e:
                 print(f"# {key}: {e}")
         return
@@ -128,7 +112,10 @@ def restore(args):
     tnc.find(baud)
     model, version = read_banner(tnc)
     if (model, version) != (meta.get("MODEL"), meta.get("VERSION")):
-        msg = f"backup is from {meta.get('MODEL')} {meta.get('VERSION')}, TNC is {model} {version}"
+        if source:
+            msg = f"backup is from {source}, TNC is {model} {version}"
+        else:
+            msg = f"backup has no MODEL/VERSION header, TNC is {model} {version}"
         if not args.force:
             raise TNCError(msg + " (use --force to restore anyway)")
         print("warning: " + msg)
@@ -139,11 +126,17 @@ def restore(args):
     tnc.cmd("XMITOK OFF")
     set_clock(tnc)
 
-    # Only send what differs from the factory defaults
-    _, defaults = parse(tnc.cmd("DISPLAY", timeout=40, quiet=True))
-    failed = []
+    # Only send what differs from the factory defaults; the same DISPLAY tells
+    # which parameters this firmware has
+    display = tnc.cmd("DISPLAY", timeout=40, quiet=True)
+    _, defaults = parse(display)
+    fw = Firmware(model, version, display_params(display))
+    failed, skipped = [], []
     for key, raw in wanted.items():
         if key in LAST or norm(raw) == norm(defaults.get(key, "")):
+            continue
+        if not fw.supports(key):
+            skipped.append(key)
             continue
         try:
             for c in commands_for(key, raw):
@@ -160,16 +153,14 @@ def restore(args):
         tnc.ser.write(b"RESET\r")
         tnc.log(f"> RESET   (INTFACE {intface})")
 
+    if skipped:
+        print(f"\nskipped, not in firmware {version}: {', '.join(skipped)}")
     if failed:
         print(f"\n{len(failed)} setting(s) not restored:")
         for f in failed:
             print("  " + f)
         sys.exit(1)
     print("\nrestore complete")
-
-
-def norm(raw):
-    return re.sub(r"\s+", " ", raw.strip())
 
 
 def main():
@@ -184,6 +175,8 @@ def main():
     r.add_argument("file")
     r.add_argument("--force", action="store_true", help="restore even if model/firmware differ")
     r.add_argument("--dry-run", action="store_true", help="only print the commands")
+    r.add_argument("--firmware", choices=sorted(KNOWN_PARAMS),
+                   help="with --dry-run: mark settings this firmware does not have")
     args = p.parse_args()
 
     try:

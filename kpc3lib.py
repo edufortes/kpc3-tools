@@ -1,11 +1,27 @@
-"""Shared serial access for the Kantronics KPC-3 Plus tools (firmware 8.3)."""
+"""Shared serial access and firmware detection for the Kantronics KPC-3 Plus tools."""
 
+import re
 import time
 
 import serial
 
 BAUDS = (9600, 1200, 19200, 4800, 2400, 300)
 KISS_EXIT = b"\xc0\xff\xc0"
+# Parameters holding a password: never printed (the TNC echoes the old value too)
+SECRET = {"RTEXT"}
+ERROR_MARKS = ("not available", "Input ignored", "out of range")
+
+
+def is_secret(line):
+    name, _, value = line.strip().partition(" ")
+    return name.upper() in SECRET and value.strip() not in ("", "%")
+
+
+def mask(line):
+    """A command or DISPLAY line as it may be shown, password hidden."""
+    if is_secret(line):
+        return f"{line.split()[0]} ********"
+    return line
 
 
 class TNCError(Exception):
@@ -100,12 +116,16 @@ class TNC:
         body = resp.replace("\r", "").replace("cmd:", "").strip()
         # Drop the echoed command line
         lines = [l for l in body.split("\n") if l.strip() and l.strip() != line]
+        errors = [l for l in lines if l.strip().startswith(("?", "EH?")) or any(e in l for e in ERROR_MARKS)]
+        # For a password only error messages are shown, never the echoed old value
+        hide = line.split()[0].upper() in SECRET if line.strip() else False
+        shown, shown_lines = mask(line), (errors if hide else lines)
         if not quiet:
-            self.log(f"> {line}" + (f"   [{' | '.join(lines)}]" if lines else ""))
-        if check and any(l.strip().startswith(("?", "EH?")) or "not available" in l or "Input ignored" in l or "out of range" in l for l in lines):
-            raise TNCError(f"TNC rejected '{line}': {' | '.join(lines)}")
+            self.log(f"> {shown}" + (f"   [{' | '.join(shown_lines)}]" if shown_lines else ""))
+        if check and errors:
+            raise TNCError(f"TNC rejected '{shown}': {' | '.join(errors)}")
         if "cmd:" not in resp and check:
-            raise TNCError(f"no prompt after '{line}'")
+            raise TNCError(f"no prompt after '{shown}'")
         return "\n".join(lines)
 
     def reset(self):
@@ -147,3 +167,131 @@ def set_clock(tnc, utc=False):
         send_clock(tnc, utc)
     except TNCError as e:
         tnc.log(f"warning: could not set clock ({e})")
+
+
+# --- firmware detection --------------------------------------------------------
+
+BANNER_RE = re.compile(r"KANTRONICS\s+(\S+)\s+VERSION\s+(\S+)")
+NAME_RE = re.compile(r"^([0-9A-Z]{2,8})( +|$)")
+# Parameters whose value is free text: taken verbatim, never trimmed
+TEXT = {"BTEXT", "CTEXT", "HTEXT", "NTEXT", "PTEXT", "RTEXT", "CWIDTEXT", "GPSINIT", "DAYSTR"}
+# Parameters shown as numbered sub-lines (1..4)
+MULTI = {"BLT", "GPSHEAD", "LT", "LTP"}
+
+# DISPLAY parameter names per firmware, taken from real dumps. Only used offline
+# (--dry-run --firmware); with a TNC attached its own DISPLAY is the reference.
+PARAMS_83 = frozenset("""
+    8BITCONV ABAUD AUTOLF AX25L2V2 AXDELAY AXHANG BEACON BKONDEL BLT BREAK BTEXT
+    BUDLIST CANLINE CANPAC CD CHECK CMDTIME CMSG COMMAND CONLIST CONMODE CONOK
+    CONPERM CPACTIME CR CRSUP CSTAMP CTEXT CTRL CWID CWIDTEXT DAMA DAMACHCK DAYSTR
+    DAYTIME DAYTWEAK DBLDISC DELETE DIGIPEAT DWAIT ECHO ESCAPE FILTER FLOW FRACK
+    FULLDUP GPSHEAD GPSINIT GPSPORT GPSTIME HBAUD HEADERLN HID HTEXT INTFACE
+    KNTIMER LCOK LEDS LFADD LFSUP LGETCHAR LLIST LT LTP LTRACK MALL MAXFRAME
+    MAXUSERS MBEACON MCOM MCON MHEADER MONITOR MRESP MRPT MSTAMP MXMIT MYALIAS
+    MYCALL MYDGPS MYDROP MYNODE MYPBBS MYREMOTE NDWILD NEWMODE NOMODE NTEXT
+    NUMNODES PACLEN PACTIME PASS PASSALL PBBS PBFORWRD PBHEADER PBHOLD PBKILLFW
+    PBLIST PBLO PBPERSON PBREVERS PERSIST PID PMODE PTEXT REDISPLA RELINK RETRY
+    RING RNRTIME RTEXT SCREENL SENDPAC SLOTTIME START STOP STREAMCA STREAMEV
+    STREAMSW SUPLIST SWP TELEMTRY TRACE TRFLOW TRIES TXDELAY TXFLOW UIDIGI UIDWAIT
+    UIFLOOD UITRACE UNPROTO USERS XFLOW XKCHKSUM XKPOLLED XMITLVL XMITOK XOFF XON
+""".split())
+# 9.1 adds the K-Net node, extra PBBS options, telemetry ranges and UIDUPE
+PARAMS_91 = PARAMS_83 | {
+    "NETALIAS", "NETBUFFS", "NETCALL", "NETCIRCS", "NETDESTS", "NETLINKS", "NETROUTE",
+    "NETUSERS", "PBMAIL", "PBSIZE", "PBUSERS", "RANGE", "UIDUPE",
+}
+KNOWN_PARAMS = {"8.3": PARAMS_83, "9.1": PARAMS_91}
+
+
+class Firmware:
+    """What a TNC firmware understands: model, version and its DISPLAY parameters.
+    params is None when unknown, then nothing is filtered."""
+
+    def __init__(self, model, version, params):
+        self.model, self.version, self.params = model, version, params
+
+    def __str__(self):
+        return f"{self.model} {self.version}"
+
+    @classmethod
+    def offline(cls, version, model="KPC3P"):
+        if version not in KNOWN_PARAMS:
+            raise TNCError(f"unknown firmware {version} (known: {', '.join(KNOWN_PARAMS)})")
+        return cls(model, version, KNOWN_PARAMS[version])
+
+    def supports(self, command):
+        return self.params is None or command.split()[0].upper() in self.params
+
+    def split(self, cmds):
+        """Return (supported, unsupported) commands."""
+        return [c for c in cmds if self.supports(c)], [c for c in cmds if not self.supports(c)]
+
+
+def display_params(display):
+    return {m.group(1) for m in map(NAME_RE.match, display.splitlines()) if m}
+
+
+# 9.1 prints "KPC3PMX" or "KPC3P" seemingly at random from one reset to the
+# next (the suffix depends on a RAM flag), so both mean the same TNC
+MODEL_ALIASES = {"KPC3PMX": "KPC3P"}
+
+
+def parse_banner(banner):
+    m = BANNER_RE.search(banner)
+    if not m:
+        return None, None
+    return MODEL_ALIASES.get(m.group(1), m.group(1)), m.group(2)
+
+
+def identify(tnc, banner=None, reset=True):
+    """Detect model, version and supported parameters. The version is only shown
+    in the RESET banner (8.3 has no VERSION command); pass reset=False to skip the
+    reset, then only the parameter list is known."""
+    if banner is None and reset:
+        banner = tnc.reset()
+    model, version = parse_banner(banner or "")
+    display = tnc.cmd("DISPLAY", timeout=40, quiet=True)
+    params = display_params(display)
+    if "INTFACE  NEWUSER" in display or "UIDIGI" not in params:
+        # NEWUSER mode lists only a few parameters: not a usable reference
+        tnc.log("warning: TNC is in NEWUSER mode, firmware parameters unknown")
+        params = None
+    fw = Firmware(model or "?", version or "?", params)
+    if version and params is not None and version not in KNOWN_PARAMS:
+        tnc.log(f"note: firmware {version} not tested, using the parameters it reports")
+    return fw
+
+
+def parse(text):
+    """Turn DISPLAY output into (meta, {key: raw value}); sub-lines get keys like 'LT 1'.
+    Also reads hand-written files with one-line entries such as 'LT 1 text'."""
+    meta, settings, current = {}, {}, None
+    for line in text.splitlines():
+        if line.startswith("# "):
+            key, _, val = line[2:].partition(" ")
+            meta[key] = val
+            continue
+        if not line.strip():
+            continue
+        m = re.match(r"^([1-4])(?: (.*))?$", line)
+        if current in MULTI and m:
+            settings[f"{current} {m.group(1)}"] = m.group(2) or ""
+            continue
+        m = re.match(r"^(BLT|GPSHEAD|LTP|LT) ([1-4])(?: (.*))?$", line)
+        if m:
+            current = None
+            settings[f"{m.group(1)} {m.group(2)}"] = m.group(3) or ""
+            continue
+        m = NAME_RE.match(line)
+        if not m:
+            continue  # e.g. "A Link state is: ...", "cmd:", monitored packets
+        name = current = m.group(1)
+        if name in MULTI or name == "DAYTIME":
+            continue
+        # DISPLAY pads names to 9 columns; keep text values verbatim after that
+        settings[name] = line[9:] if m.end() == 9 else line[m.end():]
+    return meta, settings
+
+
+def norm(raw):
+    return re.sub(r"\s+", " ", raw.strip())
