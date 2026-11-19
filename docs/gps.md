@@ -84,7 +84,7 @@ On top of the current fill-in digipeater setup (`fillin-beacon`):
 XMITOK OFF
 GPSPORT 4800 NORMAL CHECKSUM   GPS on radio port pin 2, 4800 baud, valid checksums only
 GPSHEAD 1 $GPRMC               copy each $GPRMC sentence into LT 1
-LTP 1 APN383 VIA WIDE2-1       (already set) destination and path of LT 1
+LTP 1 APN391 VIA WIDE2-1       (already set) destination and path of LT 1
 BLT 1 EVERY 00:30:00           (already set) beacon LT 1 every 30 minutes
 GPSTIME VALID RMC              (factory default) set the TNC clock from valid RMC
 CD SOFTWARE                    (already set) pin 2 must not be used as carrier detect
@@ -93,12 +93,14 @@ XMITOK ON
 
 Notes on these:
 
+- `APN391` is the Kantronics destination for firmware 9.1; on 8.3 it is `APN383`
+  (`kpc3-setup.py` picks the right one).
 - With `GPSHEAD 1` set, the GPS overwrites `LT 1` each time an RMC sentence arrives.
   The fixed `!5233.26N/...` text that `fillin-beacon` writes there is replaced as
   soon as the GPS has a fix, so no need to clear it first.
 - The beacon is then the raw NMEA sentence (`$GPRMC,...`). That is a valid APRS
   position format, but it carries no symbol and no comment. The APRS spec lets a raw
-  NMEA station pick its symbol through a `GPSxyz` destination instead of `APN383`
+  NMEA station pick its symbol through a `GPSxyz` destination instead of `APN391`
   (look up the code for the digi symbol in the APRS 1.0.1 spec, chapter 20, before
   using it).
 - `CD` must stay `SOFTWARE` (or `INTERNAL`). With `CD EXTERNAL` pin 2 is read as

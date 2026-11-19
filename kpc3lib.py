@@ -219,12 +219,33 @@ class Firmware:
             raise TNCError(f"unknown firmware {version} (known: {', '.join(KNOWN_PARAMS)})")
         return cls(model, version, KNOWN_PARAMS[version])
 
+    @property
+    def tocall(self):
+        """APRS destination (tocall) of this firmware: Kantronics KPC-3 is APN3 plus
+        the version digits, e.g. APN383 for 8.3, APN391 for 9.1."""
+        return tocall(self.version)
+
     def supports(self, command):
         return self.params is None or command.split()[0].upper() in self.params
 
     def split(self, cmds):
         """Return (supported, unsupported) commands."""
         return [c for c in cmds if self.supports(c)], [c for c in cmds if not self.supports(c)]
+
+
+def tocall(version):
+    digits = (version or "").replace(".", "")
+    return f"APN3{digits}" if len(digits) == 2 and digits.isdigit() else DEFAULT_TOCALL
+
+
+DEFAULT_TOCALL = "APN391"  # when the version is unknown: the latest firmware
+
+
+def version_of(tnc):
+    """Firmware version without a reset if possible: VERSION exists on 9.x only
+    (KPC3P-F7FC05160-9.1); older firmware needs the RESET banner."""
+    m = re.search(r"-(\d+\.\d+)\s*$", tnc.cmd("VERSION", check=False, quiet=True))
+    return m.group(1) if m else parse_banner(tnc.reset())[1]
 
 
 def display_params(display):

@@ -36,7 +36,9 @@ serial output.
 
 ## Identification
 
-- `VERSION` exists on 9.1 (not on 8.3): `KPC3P-F7FC05160-9.1`.
+- `VERSION` exists on 9.1 (not on 8.3): `KPC3P-F7FC05160-9.1`. `kpc3-setup.py
+  --beacon-only` uses it to find the version without a reset.
+- APRS destination (tocall): `APN391` for 9.1, `APN383` for 8.3.
 - The banner and `VERSION` say `KPC3P` or `KPC3PMX` seemingly at random from one
   reset to the next on the same TNC. The "MX" suffix depends on RAM flag
   `$0258`. The tools treat both as `KPC3P`.

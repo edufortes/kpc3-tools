@@ -31,7 +31,8 @@ import sys
 
 import serial
 
-from kpc3lib import BAUDS, KNOWN_PARAMS, TNC, Firmware, TNCError, identify, mask, set_clock
+from kpc3lib import (BAUDS, KNOWN_PARAMS, TNC, Firmware, TNCError, identify, mask, set_clock,
+                     tocall, version_of)
 
 CALL_RE = re.compile(r"^[A-Z0-9]{3,6}(-([0-9]|1[0-5]))?$")
 
@@ -210,7 +211,7 @@ def beacon_settings(args):
         "BEACON EVERY 0",
         "BTEXT %",
         f"LT 1 {text}",
-        "LTP 1 APN383" + (f" VIA {args.path}" if args.path else ""),
+        f"LTP 1 {args.tocall}" + (f" VIA {args.path}" if args.path else ""),
         f"BLT 1 EVERY 00:{args.interval:02d}:00",
     ]
 
@@ -306,6 +307,8 @@ def run(args):
     pbbs_call = (args.pbbs_call or next_ssid(args.call)) if args.mode == "pbbs" else None
     check_remote(args, {"MYCALL": args.call, "MYALIAS": args.alias, "MYPBBS": pbbs_call})
 
+    # LTP destination follows the firmware; set again once the TNC is identified
+    args.tocall = tocall(args.firmware)
     if args.firmware:
         if not args.dry_run:
             raise TNCError("--firmware only works with --dry-run (a TNC reports its own)")
@@ -327,6 +330,8 @@ def run(args):
 
     if args.beacon_only or args.mode == "remote":
         # No reset, nothing else touched: only the beacon or the remote access
+        if args.beacon_only:
+            args.tocall = tocall(version_of(tnc))
         cmds = beacon_settings(args) if args.beacon_only else remote_settings(args)
         if args.mode == "remote" and args.remote != "off":
             # Also check against what the running TNC already answers to
@@ -352,7 +357,9 @@ def run(args):
     if args.dry_run:
         # A soft RESET shows the version; the configuration is not touched
         tnc.verbose = False
-        dry_run(args, identify(tnc))
+        fw = identify(tnc)
+        args.tocall = fw.tocall
+        dry_run(args, fw)
         return
 
     if not args.no_restore:
@@ -365,7 +372,8 @@ def run(args):
     # Factory default may be NEWUSER mode; TERMINAL only takes effect after a reset
     fw = identify(tnc, banner=tnc.reset())
     tnc.log(f"Firmware {fw}")
-    mode_cmds = for_firmware(fw, mode_cmds, tnc.log)
+    args.tocall = fw.tocall
+    mode_cmds = for_firmware(fw, mode_settings(args), tnc.log)
     tnc.cmd("XMITOK OFF")
     set_clock(tnc)
     for c in mode_cmds:

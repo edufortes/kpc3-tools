@@ -118,9 +118,9 @@ TELEMTRY 180                                   T# frame every 30 minutes
 LT 2 :DL7EDU-10:PARM.Battery,Temp              channel names
 LT 3 :DL7EDU-10:UNIT.Volts,deg.C               channel units
 LT 4 :DL7EDU-10:EQNS.0,0.101,0,0,1.961,-50,0,1,0,0,1,0,0,1,0
-LTP 2 APN383 VIA WIDE2-1
-LTP 3 APN383 VIA WIDE2-1
-LTP 4 APN383 VIA WIDE2-1
+LTP 2 APN391 VIA WIDE2-1
+LTP 3 APN391 VIA WIDE2-1
+LTP 4 APN391 VIA WIDE2-1
 BLT 2 EVERY 02:00:00 START 00:05:00            definitions every 2 hours
 BLT 3 EVERY 02:00:00 START 00:06:00
 BLT 4 EVERY 02:00:00 START 00:07:00
@@ -129,6 +129,7 @@ XMITOK ON
 
 How it fits together:
 
+- `APN391` is the Kantronics destination for firmware 9.1; use `APN383` on 8.3.
 - The `T#` frame only carries raw counts. APRS clients get names, units and scaling
   from three messages the station sends **to itself** (addressee padded to 9
   characters; `DL7EDU-10` is exactly 9): `PARM.`, `UNIT.` and `EQNS.`.

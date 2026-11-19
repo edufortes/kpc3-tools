@@ -228,7 +228,8 @@ through it: in the client, connect to the gateway's callsign with `N0CALL-10`
 The beacon uses the location-text beacon (`LT 1` / `LTP 1` / `BLT 1`), not
 `BTEXT`. `BTEXT` beacons are always sent to the destination `BEACON`, while `LTP`
 lets you set the proper APRS destination and path, e.g.
-`N0CALL-10>APN383,WIDE2-1`. It works without a GPS connected.
+`N0CALL-10>APN391,WIDE2-1`. It works without a GPS connected. The destination is
+the Kantronics tocall for the firmware found: `APN383` on 8.3, `APN391` on 9.1.
 
 ## kpc3-backup.py: backup and restore
 
