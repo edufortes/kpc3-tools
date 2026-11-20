@@ -283,6 +283,9 @@ A backup followed by a restore and a second backup gives an identical file
 - [docs/telemetry.md](docs/telemetry.md): APRS telemetry from the two analog inputs
   (battery voltage, temperature): jumpers J8/J10, sensor circuits and the
   `TELEMTRY` / `PARM` / `UNIT` / `EQNS` settings.
+- [docs/power.md](docs/power.md): the CR2032 coin cell (settings, PBBS, clock)
+  versus the optional 9 V battery (runs the whole TNC), jumpers J1/J2, and
+  replacing the coin cell without losing the configuration.
 - [docs/firmware-9.1.md](docs/firmware-9.1.md): what was learned from a 9.1 TNC and
   its EPROM: CPU and ROM layout, factory defaults, limits, the remote login
   challenge, PBBS behaviour, and APRS lessons from a real site.
@@ -324,6 +327,8 @@ round trip, and restoring an 8.3 backup onto 9.1 with `--force`.
   `PBUSERS` does too.
 - `RTEXT` and `PTEXT` take at most 127 characters (128 gives `Input ignored`).
 - The PBBS identifies itself as `[KPC3P-9.1-HM$]`.
+- `LT n` with no text clears slot n (it answers `LT was ...`). To read the
+  location texts, use `LT`, `LTP` and `BLT` without a slot number.
 
 In `NEWUSER` mode `DISPLAY` lists only about a dozen parameters, so it cannot
 tell what the firmware supports; the tools then filter nothing and warn, and
